@@ -30,20 +30,27 @@ OctoFit Tracker is a three-tier application for a school fitness program. The st
 
 Record your plan here before editing code.
 
-- Presentation tier decision:
-- Logic tier decision:
-- Data tier decision:
-- Activity tracking approach:
-- Team management approach:
-- Leaderboard approach:
-- Workout suggestions approach:
+- Presentation tier decision: Build the React UI around route-level pages for activities, teams, leaderboard, and workouts, using the shared API client in `octofit-tracker/frontend/src/api` and accessible loading/empty/error states for every capability.
+- Logic tier decision: Keep route handlers thin and move business rules into Express services so validation, 4xx handling, calculations, and aggregation are testable without leaking data-layer concerns into the HTTP layer.
+- Data tier decision: Define strict Mongoose schemas for users, teams, activities, and workouts, with required identity and business fields enforced in the model layer and seed data created idempotently with safe upserts and membership reconciliation.
+- Activity tracking approach: Validate `userId` and `teamId` as real ObjectIds, reject invalid or missing references with deliberate 4xx responses, then persist the submitted `user`, `team`, `type`, and `minutes`, along with computed `points` and `occurredAt`.
+- Team management approach: Require a team `name` and `mascot` at creation time, default `members` to an empty array, and preserve member references as ObjectIds while exposing them cleanly to API consumers.
+- Leaderboard approach: Aggregate team totals from activity points, sort descending by total points, and assign a 1-based rank so the leaderboard is deterministic and easy to render in the UI.
+- Workout suggestions approach: Resolve the user by email, inspect recent activity patterns or the user’s fitness goal, and rank workout suggestions by a reasoned match to the user’s training pattern, returning a 4xx for unknown emails.
 
 ## Test plan
 
 Record the commands you run and what each failure means.
 
-- Data-tier command: `npm run test:data --prefix octofit-tracker/backend`
-- API command: `npm run test:api --prefix octofit-tracker/backend`
-- Frontend command: `npm test --prefix octofit-tracker/frontend`
-- Backend build command: `npm run build --prefix octofit-tracker/backend`
-- Frontend build command: `npm run build --prefix octofit-tracker/frontend`
+- Data-tier command: `npm run test:data --prefix octofit-tracker/backend`  
+  Fails when the Mongoose contracts for `User`, `Team`, `Activity`, or `Workout` are missing required fields or the seeded demo dataset does not reconcile team membership idempotently. This is the earliest signal that the data layer is not satisfying the shared contract.
+- API command: `npm run test:api --prefix octofit-tracker/backend`  
+  Fails when the route layer is not validating input, returning deliberate 4xxs for invalid IDs or missing users, or computing the expected activity/team/leaderboard/workout behaviors. This confirms whether the logic tier matches the API contract.
+- Frontend command: `npm test --prefix octofit-tracker/frontend`  
+  Fails when the presentation layer does not fetch the right endpoints, render the returned data, or surface loading/empty/error states in an accessible way. This is the final integration signal for the UI contract.
+- Backend build command: `npm run build --prefix octofit-tracker/backend`  
+  Catches TypeScript and Express configuration issues before runtime; a failure here means the server cannot compile cleanly even if the tests are not yet green.
+- Frontend build command: `npm run build --prefix octofit-tracker/frontend`  
+  Catches React/Vite/TypeScript issues in the presentation tier and ensures the app can build successfully after the component contract is implemented.
+
+Current observed failure pattern: the data-tier contract fails first (required schema fields and demo seed expectations), the API contract fails next (activity, team, leaderboard, and workout endpoints), and the frontend contract fails last (route rendering and accessible state handling). This ordering confirms the safe implementation sequence: data model -> API logic -> presentation UI.
